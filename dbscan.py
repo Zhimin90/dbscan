@@ -4,10 +4,16 @@ This is a simple implementation of DBSCAN intended to explain the algorithm.
 
 @author: Chris McCormick
 """
+"""
+Modified by: Zhimin Zou
+Modified original McCormick's code. Altered DBSCAN algorithm to have a maximum 
+density for each cluster. When growing each cluster, if max density has been reached, 
+the Breadth first search stops and returns search points for the next cluster to group.
+"""
 
 import numpy
 
-def MyDBSCAN(D, eps, MinPts):
+def MyDBSCAN(D, eps, MinPts, MaxPts):
     """
     Cluster the dataset `D` using the DBSCAN algorithm.
     
@@ -27,7 +33,9 @@ def MyDBSCAN(D, eps, MinPts):
 
     # C is the ID of the current cluster.    
     C = 0
-    
+    clusterDict = {}
+    NeighborPts = []
+
     # This outer loop is just responsible for picking new seed points--a point
     # from which to grow a new cluster.
     # Once a valid seed point is found, a new cluster is created, and the 
@@ -43,8 +51,19 @@ def MyDBSCAN(D, eps, MinPts):
         if not (labels[P] == 0):
            continue
         
+        
+
         # Find all of P's neighboring points.
-        NeighborPts = regionQuery(D, P, eps)
+        append_list = regionQuery(D, P, eps)
+
+        setNeighborPts = set(NeighborPts) #remove duplicate points
+        for NeighborPt in append_list:
+            if NeighborPt in setNeighborPts:
+                continue
+            else:
+                NeighborPts += [NeighborPt]
+
+        #print("Neighbors Quried: " + str(NeighborPts))
         
         # If the number is below MinPts, this point is noise. 
         # This is the only condition under which a point is labeled 
@@ -54,17 +73,25 @@ def MyDBSCAN(D, eps, MinPts):
         # something else).
         if len(NeighborPts) < MinPts:
             labels[P] = -1
+            #labels[P] = labels[P]
         # Otherwise, if there are at least MinPts nearby, use this point as the 
         # seed for a new cluster.    
         else: 
-           C += 1
-           growCluster(D, labels, P, NeighborPts, C, eps, MinPts)
-    
+            C += 1
+            clusterDict[C] = 1
+            #growCluster returns unprocessed NeighborPts back for new cluster assignment
+            append_list = growCluster(clusterDict, D, labels, P, NeighborPts, C, eps, MinPts, MaxPts)
+            setNeighborPts = set(NeighborPts)
+            for NeighborPt in append_list:
+                if NeighborPt in setNeighborPts:
+                    continue
+                else:
+                    NeighborPts += [NeighborPt]
     # All data has been clustered!
     return labels
 
 
-def growCluster(D, labels, P, NeighborPts, C, eps, MinPts):
+def growCluster(clusterDict, D, labels, P, NeighborPts, C, eps, MinPts, MaxPts):
     """
     Grow a new cluster with label `C` from the seed point `P`.
     
@@ -82,8 +109,15 @@ def growCluster(D, labels, P, NeighborPts, C, eps, MinPts):
     """
 
     # Assign the cluster label to the seed point.
+    print("Growing Cluster")
+    #print("Current Dictionary is: "+ str(clusterDict))
     labels[P] = C
-    
+    if C in clusterDict.keys():
+        clusterDict[C] += 1
+    else:
+        print("fault")
+        #clusterDict[label] = 1
+
     # Look at each neighbor of P (neighbors are referred to as Pn). 
     # NeighborPts will be used as a FIFO queue of points to search--that is, it
     # will grow as we discover new branch points for the cluster. The FIFO
@@ -91,7 +125,7 @@ def growCluster(D, labels, P, NeighborPts, C, eps, MinPts):
     # In NeighborPts, the points are represented by their index in the original
     # dataset.
     i = 0
-    while i < len(NeighborPts):    
+    while (i < len(NeighborPts)):    
         
         # Get the next point from the queue.        
         Pn = NeighborPts[i]
@@ -106,13 +140,19 @@ def growCluster(D, labels, P, NeighborPts, C, eps, MinPts):
         elif labels[Pn] == 0:
             # Add Pn to cluster C (Assign cluster label C).
             labels[Pn] = C
-            
+            if C in clusterDict.keys():
+                clusterDict[C] += 1
+            else:
+                print("fault")
+                #clusterDict[label] = 1
+
             # Find all the neighbors of Pn
             PnNeighborPts = regionQuery(D, Pn, eps)
             
             # If Pn has at least MinPts neighbors, it's a branch point!
             # Add all of its neighbors to the FIFO queue to be searched. 
-            if len(PnNeighborPts) >= MinPts:
+            #if (len(PnNeighborPts) >= MinPts) and (len(PnNeighborPts) < MaxPts):
+            if (len(PnNeighborPts) >= MinPts):
                 NeighborPts = NeighborPts + PnNeighborPts
             # If Pn *doesn't* have enough neighbors, then it's a leaf point.
             # Don't queue up it's neighbors as expansion points.
@@ -121,8 +161,13 @@ def growCluster(D, labels, P, NeighborPts, C, eps, MinPts):
                 #NeighborPts = NeighborPts               
         
         # Advance to the next point in the FIFO queue.
-        i += 1        
-    
+        if clusterDict[C] <= MaxPts:
+            i += 1
+        else:
+            #print(NeighborPts[i+1:])
+            return NeighborPts[i:]        
+    print("Completed")
+    return []
     # We've finished growing cluster C!
 
 
